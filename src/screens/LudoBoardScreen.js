@@ -1,92 +1,82 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, {useState, useEffect, useRef, useCallback} from 'react';
 import {
   View,
   StyleSheet,
   TouchableOpacity,
   Image,
-  Text,
-  ActivityIndicator,
-  Alert,
-  ScrollView,
+  Animated,
 } from 'react-native';
-import { Animated as RnAnimated } from 'react-native';
-import { useSelector, useDispatch } from 'react-redux';
-import { useIsFocused } from '@react-navigation/native';
-import { deviceHeight, deviceWidth } from '../constants/Scaling';
-import { Colors } from '../constants/Colors';
-import { Plot1Data, Plot2Data, Plot3Data, Plot4Data } from '../helpers/PlotData';
+import {useSelector} from 'react-redux';
+import {useIsFocused} from '@react-navigation/native';
+import {deviceHeight, deviceWidth} from '../constants/Scaling';
+import {Colors, Theme} from '../constants/Colors';
+import {Plot1Data, Plot2Data, Plot3Data, Plot4Data} from '../helpers/PlotData';
 import Pocket from '../components/Pocket';
 import VerticalPath from '../components/path/VerticalPath';
 import HorizontalPath from '../components/path/HorizontalPath';
 import FourTriangles from '../components/FourTriangles';
+import Dice from '../components/Dice';
 import Wrapper from '../components/Wrapper';
+import StartGame from '../assets/images/start.png';
 import MenuIcon from '../assets/images/menu.png';
 import MenuModal from '../components/MenuModal';
 import WinModal from '../components/WinModal';
-import { playSound, stopSound } from '../helpers/SoundUtility';
+import {playSound} from '../helpers/SoundUtility';
 import {
   selectDiceTouch,
   selectPlayer1,
   selectPlayer2,
   selectPlayer3,
   selectPlayer4,
-  selectCurrentPositions
 } from '../redux/reducers/gameSelectors';
-import { rehydrateWallet } from '../solana/solanaWallet';
-import { rollDice } from '../solana/solanaClient';
-import { selectWallet } from '../redux/reducers/walletSlice';
-import { Connection, PublicKey } from '@solana/web3.js';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import TokenOnBoard from '../components/TokenOnBoard';
 
-const LudoBoardScreen = ({ route }) => {
-  const dispatch = useDispatch();
-  const isFocused = useIsFocused();
-  const { gameId } = route.params || {};
+const LudoBoardScreen = () => {
   const player1 = useSelector(selectPlayer1);
   const player2 = useSelector(selectPlayer2);
   const player3 = useSelector(selectPlayer3);
   const player4 = useSelector(selectPlayer4);
-  const walletData = useSelector(selectWallet);
+  const isDiceTouch = useSelector(selectDiceTouch);
+  const winner = useSelector(state => state.game.winner);
 
-  const [wallet, setWallet] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [menuVisible, setMenuVisible] = useState(false);
+  const isFocused = useIsFocused();
+
   const [showStartImage, setShowStartImage] = useState(false);
-  const opacity = useRef(new RnAnimated.Value(1)).current;
+  const [menuVisible, setMenuVisible] = useState(false);
+  const opacity = useRef(new Animated.Value(1)).current;
 
-  useEffect(() => {
-    async function initializeWallet() {
-      if (walletData) {
-        const rehydrated = await rehydrateWallet(walletData);
-        setWallet(rehydrated);
-      }
-    }
-    initializeWallet();
-  }, [walletData]);
+  // Memoized function for handling menu visibility
+  const handleMenuPress = useCallback(() => {
+    playSound('ui');
+    setMenuVisible(true);
+  }, []);
 
+  // Effect to handle start image animation
   useEffect(() => {
     if (isFocused) {
       setShowStartImage(true);
-      const blinkAnimation = RnAnimated.loop(
-        RnAnimated.sequence([
-          RnAnimated.timing(opacity, {
+      const blinkAnimation = Animated.loop(
+        Animated.sequence([
+          Animated.timing(opacity, {
             toValue: 0,
             duration: 500,
             useNativeDriver: true,
           }),
-          RnAnimated.timing(opacity, {
+          Animated.timing(opacity, {
             toValue: 1,
             duration: 500,
             useNativeDriver: true,
           }),
-        ])
+        ]),
       );
+
       blinkAnimation.start();
+
       const timeout = setTimeout(() => {
         blinkAnimation.stop();
         setShowStartImage(false);
       }, 2500);
+
+      // Clean up animation on component unmount or when focus is lost
       return () => {
         blinkAnimation.stop();
         clearTimeout(timeout);
@@ -94,23 +84,20 @@ const LudoBoardScreen = ({ route }) => {
     }
   }, [isFocused]);
 
-  const handleMenuPress = useCallback(() => {
-    playSound('ui');
-    setMenuVisible(true);
-  }, []);
-
   return (
     <Wrapper>
       <TouchableOpacity
         onPress={handleMenuPress}
         style={styles.menuButton}>
-        <Image source={MenuIcon} style={{ width: 30, height: 30 }} />
+        <Image source={MenuIcon} style={styles.menuIcon} />
       </TouchableOpacity>
 
       <View style={styles.container}>
-        <View style={styles.flexRow} pointerEvents={loading ? 'none' : 'auto'}>
-          {/* Dice placeholders */}
-          <Text style={styles.diceText}>Dice Area</Text>
+        <View
+          style={styles.diceRow}
+          pointerEvents={isDiceTouch ? 'none' : 'auto'}>
+          <Dice color={Colors.green} player={2} data={player2} />
+          <Dice color={Colors.yellow} player={3} rotate data={player3} />
         </View>
 
         <View style={styles.ludoBoard}>
@@ -134,20 +121,21 @@ const LudoBoardScreen = ({ route }) => {
             <VerticalPath cells={Plot4Data} color={Colors.red} />
             <Pocket color={Colors.blue} data={player4} player={4} />
           </View>
+        </View>
 
-          <TokenOnBoard />
+        <View
+          style={styles.diceRow}
+          pointerEvents={isDiceTouch ? 'none' : 'auto'}>
+          <Dice color={Colors.red} player={1} data={player1} />
+          <Dice color={Colors.blue} rotate player={4} data={player4} />
         </View>
       </View>
 
       {showStartImage && (
-        <RnAnimated.Image
-          source={require('../assets/images/start.png')}
-          style={{
-            width: deviceWidth * 0.5,
-            height: deviceWidth * 0.2,
-            position: 'absolute',
-            opacity,
-          }}
+        <Animated.Image
+          source={StartGame}
+          style={styles.startImage}
+          opacity={opacity}
         />
       )}
 
@@ -158,82 +146,80 @@ const LudoBoardScreen = ({ route }) => {
         />
       )}
 
-      <WinModal />
-
-      {loading && (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#ffffff" />
-          <Text style={styles.loadingText}>Loading...</Text>
-        </View>
-      )}
+      {winner != null && <WinModal winner={winner} />}
     </Wrapper>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    alignSelf: 'center',
+    flex: 1,
+    alignItems: 'center',
     justifyContent: 'center',
-    height: deviceHeight * 0.5,
-    width: deviceWidth,
+    paddingVertical: deviceHeight * 0.02,
   },
   ludoBoard: {
-    width: '100%',
-    height: '100%',
+    width: deviceWidth * 0.95,
+    aspectRatio: 1,
     alignSelf: 'center',
-    padding: 10,
+    borderRadius: Theme.borderRadius.medium,
+    overflow: 'hidden',
+    backgroundColor: '#ffffff',
+    ...Theme.shadows.large,
   },
-  flexRow: {
+  diceRow: {
+    width: deviceWidth * 0.95,
+    flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    flexDirection: 'row',
-    paddingHorizontal: 30,
+    paddingHorizontal: deviceWidth * 0.05,
+    marginVertical: deviceHeight * 0.02,
   },
   plotContainer: {
     width: '100%',
     height: '40%',
     justifyContent: 'space-between',
     flexDirection: 'row',
-    backgroundColor: '#ccc',
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
   },
   pathContainer: {
     flexDirection: 'row',
     width: '100%',
     height: '20%',
     justifyContent: 'space-between',
-    backgroundColor: '#1E5162',
+    backgroundColor: '#ffffff',
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: '#e0e0e0',
   },
   menuButton: {
     position: 'absolute',
-    top: 60,
-    left: 20,
-    zIndex: 20,
-  },
-  diceText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  loadingContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.7)',
+    top: deviceHeight * 0.05,
+    left: deviceWidth * 0.05,
     zIndex: 10,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+    borderRadius: Theme.borderRadius.round,
+    padding: 8,
+    ...Theme.shadows.medium,
   },
-  loadingText: {
-    color: 'white',
-    marginTop: 10,
-    fontSize: 16,
+  menuIcon: {
+    width: 30,
+    height: 30,
+    tintColor: Colors.textPrimary,
+  },
+  startImage: {
+    width: deviceWidth * 0.6,
+    height: deviceWidth * 0.25,
+    position: 'absolute',
+    alignSelf: 'center',
+    top: deviceHeight * 0.4,
+    resizeMode: 'contain',
   },
 });
 
 export default LudoBoardScreen;
-
 
 
 
